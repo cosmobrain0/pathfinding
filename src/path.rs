@@ -31,13 +31,21 @@ struct Node {
 impl Node {
     /// Gets the h_cost, without reevaluating it
     /// if it's already been evaluated once.
-    fn h_cost(&mut self, target: &Node) -> f32 {
+    fn h_cost_calculate(&mut self, target: &Node) -> f32 {
         if let Some(h_cost) = self.h_cost {
             h_cost
         } else {
             let cost = (target.position - self.position).length();
             self.h_cost = Some(cost);
             cost
+        }
+    }
+
+    fn h_cost(&self) -> f32 {
+        if let Some(h_cost) = self.h_cost {
+            h_cost
+        } else {
+            panic!("The h_cost of this node hasn't been calculated!");
         }
     }
 
@@ -59,8 +67,14 @@ impl Node {
     }
 
     #[inline(always)]
-    pub fn f_cost(&self, target: &Node) -> Option<f32> {
-        self.g_cost.map(|g_cost| g_cost + self.h_cost(target))
+    pub fn f_cost_calculate(&mut self, target: &Node) -> Option<f32> {
+        self.g_cost
+            .map(|g_cost| g_cost + self.h_cost_calculate(target))
+    }
+
+    #[inline(always)]
+    pub fn f_cost(&self) -> Option<f32> {
+        self.g_cost.map(|g_cost| g_cost + self.h_cost())
     }
 }
 
@@ -106,6 +120,8 @@ impl Pathfinder {
         let mut open = vec![];
         let mut closed = vec![];
         self.nodes[start.0].g_cost = Some(0.0);
+        let target = self.nodes[end.0].clone();
+        self.nodes[start.0].h_cost_calculate(&target);
         open.push(start);
 
         loop {
@@ -113,8 +129,7 @@ impl Pathfinder {
                 .iter()
                 .fold(None, |acc, el| {
                     if acc.is_some_and(|acc: NodeIndex| {
-                        self.nodes[acc.0].f_cost(&self.nodes[end.0])
-                            < self.nodes[el.0].f_cost(&self.nodes[end.0])
+                        self.nodes[acc.0].f_cost() < self.nodes[el.0].f_cost()
                     }) {
                         acc
                     } else {
@@ -146,6 +161,7 @@ impl Pathfinder {
                         let parent = self.nodes[current.0].clone();
                         self.nodes[neighbour.0].set_g_cost(&parent, current_index);
                         if !neighbour_in_open {
+                            self.nodes[neighbour.0].h_cost_calculate(&target);
                             open.push(neighbour);
                         }
                     }
