@@ -1,67 +1,164 @@
-use std::fmt::Debug;
+use crate::vector::Vector;
 
-/// The error returned by the `Connection<T>` constructor
-/// when given invalid input
-enum ConnectionError {
-    /// The start and end nodes are the same node (a node can't be connected to itself)
-    StartIsEnd,
-    /// Neither the start node nor the end node are in the `Vec` of given nodes
-    NodesNotFound,
-    /// The start node wasn't in the `Vec` of given nodes, but the end node was
-    StartNotFound,
-    /// The end node wasn't in the `Vec` of given nodes, but the start node was
-    EndNotFound,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct NodeIndex(usize);
+impl From<usize> for NodeIndex {
+    fn from(value: usize) -> Self {
+        Self(value)
+    }
 }
 
-#[derive(Debug)]
-pub struct Connection<T: Debug> {
-    start: usize,
-    end: usize,
-    data: T,
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Connection {
+    start: NodeIndex,
+    end: NodeIndex, // I don't like this
 }
-impl<T: Debug> Connection<T> {
-    fn new<N>(nodes: &Vec<N>, start: &N, end: &N, data: T) -> Result<Self, ConnectionError> {
-        if std::ptr::eq(start as *const N, end as *const N) {
-            Err(ConnectionError::StartIsEnd)
+impl From<(usize, usize)> for Connection {
+    fn from(value: (usize, usize)) -> Self {
+        Self {
+            start: NodeIndex(value.0),
+            end: NodeIndex(value.1),
+        }
+    }
+}
+#[derive(Debug, Clone, PartialEq)]
+struct Node {
+    position: Vector,
+    g_cost: Option<f32>,
+    h_cost: Option<f32>, // this should only be evaluated once
+    parent: Option<NodeIndex>,
+}
+impl Node {
+    /// Gets the h_cost, without reevaluating it
+    /// if it's already been evaluated once.
+    fn h_cost(&mut self, target: &Node) -> f32 {
+        if let Some(h_cost) = self.h_cost {
+            h_cost
         } else {
-            let start = nodes
+            let cost = (target.position - self.position).length();
+            self.h_cost = Some(cost);
+            cost
+        }
+    }
+
+    /// # Panics
+    /// Panics if the parent node does not have a g_cost
+    fn set_g_cost(&mut self, parent: &Node, parent_index: NodeIndex) {
+        self.parent = Some(parent_index);
+        self.g_cost = Some(parent.g_cost.unwrap() + (parent.position - self.position).length());
+    }
+}
+impl Node {
+    pub fn new(position: Vector) -> Self {
+        Self {
+            position,
+            g_cost: 0.0.into(),
+            h_cost: None,
+            parent: None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn f_cost(&self, target: &Node) -> Option<f32> {
+        self.g_cost.map(|g_cost| g_cost + self.h_cost(target))
+    }
+}
+
+struct Pathfinder {
+    nodes: Vec<Node>,
+    connections: Vec<Connection>,
+    best_route: Option<Vec<NodeIndex>>,
+}
+impl Pathfinder {
+    pub fn new(nodes: Vec<Vector>, connections: Vec<Connection>) -> Option<Self> {
+        let mut final_connections = Vec::with_capacity(connections.len());
+        if nodes.len() == 0
+            || connections.iter().any(
+                |Connection {
+                     start: NodeIndex(start),
+                     end: NodeIndex(end),
+                 }| *start >= nodes.len() || *end >= nodes.len(),
+            )
+        {
+            None
+        } else {
+            for potential_connection in connections.into_iter() {
+                if !final_connections
+                    .iter()
+                    .any(|connection| *connection == potential_connection)
+                {
+                    final_connections.push(potential_connection);
+                }
+            }
+            Some(Self {
+                nodes: nodes
+                    .into_iter()
+                    .map(|position| Node::new(position))
+                    .collect(),
+                connections: final_connections,
+                best_route: None,
+            })
+        }
+    }
+
+    pub fn pathfind(&mut self, start: NodeIndex, end: NodeIndex) {
+        // everything added to `open` must have a calculated g_cost
+        let mut open = vec![];
+        let mut closed = vec![];
+        self.nodes[start.0].g_cost = Some(0.0);
+        open.push(start);
+
+        loop {
+            let current_index = open
                 .iter()
-                .enumerate()
-                .find(|(_, x)| std::ptr::eq(start as *const N, *x as *const N));
-            let end = nodes
-                .iter()
-                .enumerate()
-                .find(|(_, x)| std::ptr::eq(end as *const N, *x as *const N));
-            match (start, end) {
-                (Some((start, _)), Some((end, _))) => Ok(Self { start, end, data }),
-                (Some(_), None) => Err(ConnectionError::EndNotFound),
-                (None, Some(_)) => Err(ConnectionError::StartNotFound),
-                (None, None) => Err(ConnectionError::NodesNotFound),
+                .fold(None, |acc, el| {
+                    if acc.is_some_and(|acc: NodeIndex| {
+                        self.nodes[acc.0].f_cost(&self.nodes[end.0])
+                            < self.nodes[el.0].f_cost(&self.nodes[end.0])
+                    }) {
+                        acc
+                    } else {
+                        Some(*el)
+                    }
+                })
+                .unwrap();
+            let current = open.remove(current_index.0);
+            closed.push(current);
+
+            if current == end {
+                // TODO: construct path and return it
+                return;
+            }
+
+            for neighbour in self.neighbours(current_index) {
+                if !closed.contains(&neighbour) {
+                    let current_node = &self.nodes[current.0];
+                    let neighbour_node = &self.nodes[neighbour.0];
+                    let new_path_g_cost = current_node.g_cost.unwrap()
+                        + (current_node.position - neighbour_node.position).length();
+                    let current_g_cost = neighbour_node.g_cost;
+
+                    let neighbour_in_open = open.contains(&neighbour);
+                    if current_g_cost.is_none()
+                        || current_g_cost.unwrap() > new_path_g_cost
+                        || !neighbour_in_open
+                    {
+                        let parent = self.nodes[current.0].clone();
+                        self.nodes[neighbour.0].set_g_cost(&parent, current_index);
+                        if !neighbour_in_open {
+                            open.push(neighbour);
+                        }
+                    }
+                }
             }
         }
     }
-}
-impl<T: Debug + Clone> Clone for Connection<T> {
-    fn clone(&self) -> Self {
-        Self {
-            start: self.start,
-            end: self.end,
-            data: self.data.clone(),
-        }
-    }
-}
 
-#[derive(Debug)]
-pub struct Path<N: Debug, C: Debug> {
-    nodes: Vec<N>,
-    connections: Vec<Connection<C>>,
-}
-impl<N: Debug, C: Debug> Path<N, C> {}
-impl<N: Debug + Clone, C: Debug + Clone> Clone for Path<N, C> {
-    fn clone(&self) -> Self {
-        Self {
-            nodes: self.nodes.clone(),
-            connections: self.connections.clone(),
-        }
+    fn neighbours<'a>(&'a mut self, node_index: NodeIndex) -> Vec<NodeIndex> {
+        self.connections
+            .iter()
+            .filter(|x| x.start.0 == node_index.0)
+            .map(|x| x.end)
+            .collect()
     }
 }

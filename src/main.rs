@@ -1,5 +1,6 @@
 mod path;
 mod vector;
+use std::fmt::Debug;
 
 use leptos::*;
 use path::*;
