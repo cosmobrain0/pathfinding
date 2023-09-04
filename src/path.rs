@@ -88,7 +88,7 @@ pub struct Pathfinder {
     best_route: Option<Vec<Node>>,
 }
 impl Pathfinder {
-    pub fn new(nodes: Vec<Vector>, connections: Vec<Connection>) -> Option<Self> {
+    pub fn new(nodes: &Vec<Vector>, connections: Vec<Connection>) -> Option<Self> {
         let mut final_connections = Vec::with_capacity(connections.len());
         if nodes.len() == 0
             || connections.iter().any(
@@ -111,7 +111,7 @@ impl Pathfinder {
             Some(Self {
                 nodes: nodes
                     .into_iter()
-                    .map(|position| Node::new(position))
+                    .map(|position| Node::new(*position))
                     .collect(),
                 connections: final_connections,
                 best_route: None,
