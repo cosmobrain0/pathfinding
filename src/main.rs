@@ -14,9 +14,9 @@ fn main() {
 
 #[component]
 fn App(cx: Scope) -> impl IntoView {
-    let nodes: Vec<_> = vec![vec2d![0.0, 0.0], vec2d![10.0, 20.0]];
+    let nodes: Vec<_> = vec![vec2d![0.0, 0.0], vec2d![100.0, 200.0], vec2d![30.0, 50.0]];
 
-    let connections: Vec<Connection> = vec![0, 1]
+    let connections: Vec<Connection> = vec![0, 2, 2, 1]
         .chunks_exact(2)
         .map(|x| (x[0], x[1]))
         .map(Into::into)

@@ -458,7 +458,7 @@ async function __wbg_init(input) {
     if (wasm !== undefined) return wasm;
 
     if (typeof input === 'undefined') {
-        input = new URL('pathfinding-f1724f90e6bce3b0_bg.wasm', import.meta.url);
+        input = new URL('pathfinding-cc55ac49c6bcad3c_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 
