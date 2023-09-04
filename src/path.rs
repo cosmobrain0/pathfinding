@@ -1,7 +1,7 @@
 use crate::vector::Vector;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct NodeIndex(usize);
+pub struct NodeIndex(pub usize);
 impl From<usize> for NodeIndex {
     fn from(value: usize) -> Self {
         Self(value)
@@ -9,7 +9,7 @@ impl From<usize> for NodeIndex {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Connection {
+pub struct Connection {
     start: NodeIndex,
     end: NodeIndex, // I don't like this
 }
@@ -22,7 +22,7 @@ impl From<(usize, usize)> for Connection {
     }
 }
 #[derive(Debug, Clone, PartialEq)]
-struct Node {
+pub struct Node {
     position: Vector,
     g_cost: Option<f32>,
     h_cost: Option<f32>, // this should only be evaluated once
@@ -55,6 +55,10 @@ impl Node {
         self.parent = Some(parent_index);
         self.g_cost = Some(parent.g_cost.unwrap() + (parent.position - self.position).length());
     }
+
+    pub fn position(&self) -> Vector {
+        self.position
+    }
 }
 impl Node {
     pub fn new(position: Vector) -> Self {
@@ -78,10 +82,10 @@ impl Node {
     }
 }
 
-struct Pathfinder {
+pub struct Pathfinder {
     nodes: Vec<Node>,
     connections: Vec<Connection>,
-    best_route: Option<Vec<NodeIndex>>,
+    best_route: Option<Vec<Node>>,
 }
 impl Pathfinder {
     pub fn new(nodes: Vec<Vector>, connections: Vec<Connection>) -> Option<Self> {
@@ -115,7 +119,7 @@ impl Pathfinder {
         }
     }
 
-    pub fn pathfind(&mut self, start: NodeIndex, end: NodeIndex) {
+    pub fn pathfind(&mut self, start: NodeIndex, end: NodeIndex) -> &Vec<Node> {
         // everything added to `open` must have a calculated g_cost
         let mut open = vec![];
         let mut closed = vec![];
@@ -127,13 +131,14 @@ impl Pathfinder {
         loop {
             let current_index = open
                 .iter()
-                .fold(None, |acc, el| {
-                    if acc.is_some_and(|acc: NodeIndex| {
+                .enumerate()
+                .fold(None, |acc, (i, el)| {
+                    if acc.is_some_and(|(_, acc): (usize, NodeIndex)| {
                         self.nodes[acc.0].f_cost() < self.nodes[el.0].f_cost()
                     }) {
                         acc
                     } else {
-                        Some(*el)
+                        Some((i, *el))
                     }
                 })
                 .unwrap();
@@ -141,11 +146,19 @@ impl Pathfinder {
             closed.push(current);
 
             if current == end {
-                // TODO: construct path and return it
-                return;
+                let mut path = vec![self.nodes[current.0].clone()];
+                let mut current = current;
+                while let Some(parent) = &self.nodes[current.0].parent {
+                    path.push(self.nodes[parent.0].clone());
+                    current = *parent;
+                }
+                assert_eq!(current, start);
+                path = path.into_iter().rev().collect();
+                self.best_route = Some(path);
+                return self.best_route.as_ref().unwrap();
             }
 
-            for neighbour in self.neighbours(current_index) {
+            for neighbour in self.neighbours(current_index.1) {
                 if !closed.contains(&neighbour) {
                     let current_node = &self.nodes[current.0];
                     let neighbour_node = &self.nodes[neighbour.0];
@@ -159,7 +172,7 @@ impl Pathfinder {
                         || !neighbour_in_open
                     {
                         let parent = self.nodes[current.0].clone();
-                        self.nodes[neighbour.0].set_g_cost(&parent, current_index);
+                        self.nodes[neighbour.0].set_g_cost(&parent, current_index.1);
                         if !neighbour_in_open {
                             self.nodes[neighbour.0].h_cost_calculate(&target);
                             open.push(neighbour);
